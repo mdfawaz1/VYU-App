@@ -4,7 +4,9 @@ import {
     getAllPeopleData,
     getAllPeopleCount,
     getRecentPeopleCount,
-    getFilteredPeopleCount
+    getFilteredData,
+    getCarFieldSum,
+    getFieldSum
   } from './controllers/peopleController';
   
 const app = express();
@@ -21,8 +23,10 @@ mongoose.connect(mongoURI)
 // Endpoints directly in index.ts
 app.get('/api/v1/people', getAllPeopleData);
 app.get('/api/v1/people/count', getAllPeopleCount);
-app.get('/api/v1/people/count/filter', getFilteredPeopleCount);
+app.get('/api/v1/people/count/find', getFilteredData);
 app.get('/api/v1/people/count/recent', getRecentPeopleCount);
+app.get('/api/v1/people/count/field', getCarFieldSum);
+app.get('/api/v1/people/counts/:field', getFieldSum);
 
 // Start server
 app.listen(port, () => {
