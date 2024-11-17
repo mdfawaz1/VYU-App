@@ -1,0 +1,31 @@
+1. for fetching the collection names
+    http://localhost:5000/api/v1/vehicel/collection
+
+2. for fetching the data from the specified collection name
+    http://localhost:5000/api/v1/vehicel/collection/data?collectionName=peoples
+        key: collectionName     value: collection_name
+
+3. for fetching the doc count from the specified collection name
+    http://localhost:5000/api/v1/vehicel/collection/count/doc?collectionName=peoples
+        key: collectionName     value: collection_name
+
+4. for fetching the data according the specified no. of days from the given collection name
+    http://localhost:5000/api/v1/vehicel/collection/count/recent?collection=peoples&days=7
+        key: collection           value: collection_name
+        key: field_name           value: no. of days
+
+5. for fetching the filtered based data count from specified collection name and field
+    http://localhost:5000/api/v1/vehicel/collection/field/count?collection=peoples&car=2
+        key: collection           value: collection_name
+        key: field_name           value: field_value
+
+6. for fetching the sum of the given field from specified collection name and field
+    http://localhost:5000/api/v1/vehicel/collection/field/sum?collection=peoples&field=human
+        key: collection     value: collection_name
+        key: field          value: field_name
+
+7. for fetching the data by using start and end time stamp from specified collection name
+    http://localhost:5000/api/v1/vehicel/collection/data/timeStamp?collectionName=peoples&startDate=2024-11-12T00:00:00&endDate=2024-11-17T00:00:00
+        key: collectionName    value: collection_name
+        key: startDate         value: 2024-11-12T00:00:00
+        key : endDate          value: 2024-11-15T00:00:00
