@@ -1,16 +1,26 @@
 import express from 'express';
 import mongoose from 'mongoose';
+
 import {
-    getAllPeopleData,
-    getAllPeopleCount,
-    getRecentPeopleCount,
-    getFilteredData,
-    getCarFieldSum,
-    getFieldSum
-  } from './controllers/peopleController';
+    getAllCollections,
+    getAllDataFromCollection,
+    getDocCountFromCollection,
+    getRecentDocCount,
+    getFilteredDataCount,
+    getFieldSums,
+    getDataByDateRange,
+  } from './controllers/Controller_data';
+
+  import {
+    configureMqttClient,
+    subscribeToTopic,
+    unsubscribeFromTopic,
+    getSubscriptions,
+    ensureMqttConfigured,
+  } from './controllers/controllers_mqtt';
   
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 8080;
 
 app.use(express.json());
 
@@ -21,12 +31,57 @@ mongoose.connect(mongoURI)
 .catch(err => console.log(err));
 
 // Endpoints directly in index.ts
-app.get('/api/v1/people', getAllPeopleData);
-app.get('/api/v1/people/count', getAllPeopleCount);
-app.get('/api/v1/people/count/find', getFilteredData);
-app.get('/api/v1/people/count/recent', getRecentPeopleCount);
-app.get('/api/v1/people/count/field', getCarFieldSum);
-app.get('/api/v1/people/counts/:field', getFieldSum);
+// 1. api for collection names
+app.get('/api/v1/vehicel/collection', getAllCollections);
+
+// 2. api for data from collection
+app.get('/api/v1/vehicel/collection/data',async (req, res) => {
+  try {
+    await getAllDataFromCollection(req, res);  // Call the controller
+  } catch (error) {
+    res.status(500).json({ message: 'Something went wrong.', error });
+  }
+});
+
+//3. api for counting the doc of the collection
+app.get('/api/v1/vehicel/collection/count/doc', async (req, res) => {
+  try {
+    await getDocCountFromCollection(req, res);  // Calling the controller
+  } catch (error) {
+    res.status(500).json({ message: 'Something went wrong.', error });
+  }
+});
+
+// 4. api for fetching the data of specified collection name and days
+app.get('/api/v1/vehicel/collection/count/recent', async (req, res) => {
+  try {
+    await getRecentDocCount(req, res);  // Calling the controller
+  } catch (error) {
+    res.status(500).json({ message: 'Something went wrong.', error });
+  }
+});
+
+// 5. api for fetching the count of the specified field and the collection name
+app.get('/api/v1/vehicel/collection/field/count', getFilteredDataCount);
+
+//6. api for fetching the sum of the specified collection name and field
+app.get('/api/v1/vehicel/collection/field/sum', getFieldSums);
+
+// 7. api for timestamp data
+app.get('/api/v1/vehicel/collection/data/timeStamp', async (req, res) => {
+  try {
+    // Call the controller function and await its result
+    await getDataByDateRange(req, res);
+  } catch (error) {
+    res.status(500).json({ message: 'Error handling the request', error });
+  }
+});
+
+// for mqtt
+app.post('/configure-mqtt', configureMqttClient);
+app.post('/subscribe', ensureMqttConfigured, subscribeToTopic);
+app.post('/unsubscribe', ensureMqttConfigured, unsubscribeFromTopic);
+app.get('/subscriptions', ensureMqttConfigured, getSubscriptions);
 
 // Start server
 app.listen(port, () => {
