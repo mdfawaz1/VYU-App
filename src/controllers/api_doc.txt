@@ -1,31 +1,127 @@
 1. for fetching the collection names
-    http://localhost:5000/api/v1/vehicel/collection
+    http://localhost:8080/api/v1/allCollections
+
+response : 
+    {
+        "collections": [
+            "peoples",
+            "vehicels",
+            "cam1",
+            ":topic"
+        ]
+    }
 
 2. for fetching the data from the specified collection name
-    http://localhost:5000/api/v1/vehicel/collection/data?collectionName=peoples
-        key: collectionName     value: collection_name
+    http://localhost:8080/api/v1/Collection/data?collectionName=cam1
+        key: collectionName     value: cam1
 
-3. for fetching the doc count from the specified collection name
-    http://localhost:5000/api/v1/vehicel/collection/count/doc?collectionName=peoples
-        key: collectionName     value: collection_name
+response : 
+[
+    {
+        "_id": "6739a57df4395b1c0008c156",
+        "topic": "cam1",
+        "message": "{\n  \"UtcTime\": \"2024-04-09T02:55:52.536Z\",\n  \"Source\": {\n    \"VideoSource\": \"1\",\n    \"Rule\": \"Entry\"\n  }\n}",
+        "timestamp": "2024-11-17T08:12:45.311Z",
+        "__v": 0
+    }
+]
 
-4. for fetching the data according the specified no. of days from the given collection name
-    http://localhost:5000/api/v1/vehicel/collection/count/recent?collection=peoples&days=7
-        key: collection           value: collection_name
-        key: field_name           value: no. of days
+3. for fetching the data according the specified no. of days from the given collection name
+    http://localhost:8080/api/v1/Collection/data/allRecent?collection=peoples&days=5
+        key: collection           value: peoples
+        key: days                 value: 5
 
-5. for fetching the filtered based data count from specified collection name and field
-    http://localhost:5000/api/v1/vehicel/collection/field/count?collection=peoples&car=2
-        key: collection           value: collection_name
-        key: field_name           value: field_value
+response : 
+{
+    "collection": "peoples",
+    "recentDays": 5,
+    "count": 2
+}
 
-6. for fetching the sum of the given field from specified collection name and field
-    http://localhost:5000/api/v1/vehicel/collection/field/sum?collection=peoples&field=human
-        key: collection     value: collection_name
-        key: field          value: field_name
+4. for fetching the filtered based data count from specified collection name and field
+    4.1. http://localhost:8080/api/v1/Collection/filtered/count?collection=cam1&VideoSource=1&Rule=Entry,Exit
+        key: collection           value: cam1
+        key: VideoSource           value: "1"
+        key: Rule                   value: "Entry,Exit"
+            response : 
+            {
+                "collection": "cam1",
+                "VideoSource": "1",
+                "RuleCounts": {
+                    "exit": 4,
+                    "entry": 9
+                }
+            }           
 
-7. for fetching the data by using start and end time stamp from specified collection name
-    http://localhost:5000/api/v1/vehicel/collection/data/timeStamp?collectionName=peoples&startDate=2024-11-12T00:00:00&endDate=2024-11-17T00:00:00
-        key: collectionName    value: collection_name
+    4.2. http://localhost:8080/api/v1/Collection/filtered/count?collection=cam1&VideoSource=1&Rule=Entry,Exit&startTime=2024-11-17T00:00:00&endTime=2024-11-20T00:00:00
+        key: collection           value: cam1
+        key: VideoSource           value: "1"
+        key: Rule                   value: "Entry,Total"
+        key: startTime              value: 2024-11-17T00:00:00
+        key: endTime                value: 2024-11-20T00:00:00
+
+            response :
+            {
+                "collection": "cam8",
+                "VideoSource": "1",
+                "RuleCounts": {
+                    "exit": 14,
+                    "total": 16
+                },
+                "startTime": "2024-11-10T00:00:00",
+                "endTime": "2024-11-25T00:00:00"
+            }
+
+5. for fetching the sum of the given field from specified collection name and field
+    http://localhost:8080/api/v1/Collection/field/sum?collection=peoples&field=bike
+        key: collection     value: peoples
+        key: field          value: bike
+
+response : 
+        5.1.
+        {
+            "collection": "peoples",
+            "fieldSums": {
+                "bike": 28
+            }
+        }
+
+        5.2.
+        {
+            "collection": "peoples",
+            "fieldSums": {
+                "bike": 28,
+                "car": 7
+            }
+        }
+
+6. for fetching the data by using start and end time stamp from specified collection name
+    http://localhost:8080/api/v1/Collection/data/timeStamp?collectionName=peoples&startDate=2024-11-12T00:00:00&endDate=2024-11-15T00:00:00
+        key: collectionName    value: peoples
         key: startDate         value: 2024-11-12T00:00:00
-        key : endDate          value: 2024-11-15T00:00:00
+        key: endDate           value: 2024-11-15T00:00:00
+
+response : 
+{
+    "count": 2,
+    "data": [
+        {
+            "_id": "673622aaee77eb0121b308dd",
+            "car": 2,
+            "bike": 3,
+            "bus": 5,
+            "human": 8,
+            "truck": 9,
+            "createdAt": "2024-11-14T21:47:46.903Z"
+        },
+        {
+            "_id": "673622aaee77eb0121b308de",
+            "car": 5,
+            "bike": 25,
+            "bus": 5,
+            "human": 8,
+            "truck": 9,
+            "createdAt": "2024-11-13T21:47:46.903Z"
+        }
+    ]
+}
