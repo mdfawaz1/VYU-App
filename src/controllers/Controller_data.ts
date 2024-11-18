@@ -1,15 +1,26 @@
 import { Request, Response } from 'express';
-import { MongoClient } from 'mongodb';
+import { MongoClient, Db, Collection } from 'mongodb';
 
-const mongoURI = process.env.MONGO_URI || 'mongodb://localhost:27017';
-const dbName = process.env.DB_NAME || 'VYU';
-const client = new MongoClient(mongoURI);
+// MongoDB client setup and connection management
+let db: Db | undefined;
 
-// Utility Function to Connect to MongoDB
-const connectToCollection = async (collectionName: string) => {
-  await client.connect();
-  const db = client.db(dbName);
-  return db.collection(collectionName);
+const connectToDatabase = async (): Promise<Db> => {
+  if (!db) {
+    try {
+      const client = new MongoClient('mongodb://localhost:27017');
+      const connection = await client.connect();
+      db = connection.db('VYU');
+    } catch (error) {
+      throw new Error('Failed to connect to database');
+    }
+  }
+  return db!;
+};
+
+// Helper function to get the collection
+const getCollection = async (collectionName: string): Promise<Collection> => {
+  const database = await connectToDatabase();
+  return database.collection(collectionName);
 };
 
 // Utility Function to Validate Query Parameters
@@ -26,29 +37,21 @@ const validateQueryParams = (params: string[], req: Request, res: Response): boo
 
 // Helper function to format date in IST
 const formatDateInIST = (dateStr: string): Date => {
-  // Create date object from the incoming date string (in IST)
   const date = new Date(dateStr);
-
-  // Set the date to IST (UTC +5:30)
-  const offset = 5.5 * 60 * 60 * 1000; // IST is UTC +5:30 (in milliseconds)
+  const offset = 5.5 * 60 * 60 * 1000;
   date.setTime(date.getTime() + offset);
-
-  // Return the date in IST
   return date;
 };
 
 // 1. Get All Collection Names
 export const getAllCollections = async (req: Request, res: Response): Promise<void> => {
   try {
-    await client.connect();
-    const db = client.db(dbName);
+    const db = await connectToDatabase();
     const collections = await db.listCollections().toArray();
     const collectionNames = collections.map((collection) => collection.name);
     res.status(200).json({ collections: collectionNames });
-  } catch (error) {
-    res.status(500).json({ message: 'Error fetching collections', error });
-  } finally {
-    await client.close();
+  } catch (error: unknown) {
+    res.status(500).json({ message: 'Error fetching collections', error: error instanceof Error ? error.message : 'Unknown error' });
   }
 };
 
@@ -57,32 +60,16 @@ export const getAllDataFromCollection = async (req: Request, res: Response): Pro
   if (!validateQueryParams(['collectionName'], req, res)) return;
   const collectionName = req.query.collectionName as string;
   try {
-    const collection = await connectToCollection(collectionName);
+    const collection = await getCollection(collectionName);
     const allData = await collection.find({}).toArray();
-    res.status(200).json(allData);
-  } catch (error) {
-    res.status(500).json({ message: 'Error fetching data from collection', error });
-  } finally {
-    await client.close();
+    const count_doc = await collection.countDocuments({});
+    res.status(200).json({ count: count_doc, allData });
+  } catch (error: unknown) {
+    res.status(500).json({ message: 'Error fetching data from collection', error: error instanceof Error ? error.message : 'Unknown error' });
   }
 };
 
-// 3. Get Total Document Count of a Collection
-export const getDocCountFromCollection = async (req: Request, res: Response): Promise<void> => {
-  if (!validateQueryParams(['collectionName'], req, res)) return;
-  const collectionName = req.query.collectionName as string;
-  try {
-    const collection = await connectToCollection(collectionName);
-    const count = await collection.countDocuments();
-    res.status(200).json({ collection: collectionName, count });
-  } catch (error) {
-    res.status(500).json({ message: 'Error fetching document count', error });
-  } finally {
-    await client.close();
-  }
-};
-
-// 4. Get Recent Document Count
+// 3. Get Recent Document Count
 export const getRecentDocCount = async (req: Request, res: Response): Promise<void> => {
   if (!validateQueryParams(['collection'], req, res)) return;
   const collectionName = req.query.collection as string;
@@ -91,40 +78,77 @@ export const getRecentDocCount = async (req: Request, res: Response): Promise<vo
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - recentDays);
   try {
-    const collection = await connectToCollection(collectionName);
+    const collection = await getCollection(collectionName);
     const count = await collection.countDocuments({ createdAt: { $gte: startDate } });
     res.status(200).json({ collection: collectionName, recentDays, count });
-  } catch (error) {
-    res.status(500).json({ message: 'Error fetching recent documents count', error });
-  } finally {
-    await client.close();
+  } catch (error: unknown) {
+    res.status(500).json({ message: 'Error fetching recent documents count', error: error instanceof Error ? error.message : 'Unknown error' });
   }
 };
 
-// 5. Get Filtered Data Count
+// 4. Get Filtered Data Count for cameras
 export const getFilteredDataCount = async (req: Request, res: Response): Promise<void> => {
-  if (!validateQueryParams(['collection'], req, res)) return;
   const collectionName = req.query.collection as string;
-  const filter: Record<string, any> = {};
-  Object.keys(req.query).forEach((key) => {
-    if (key === 'collection') return;
-    const value = req.query[key];
-    if (typeof value === 'string') {
-      filter[key] = isNaN(Number(value)) ? value : parseFloat(value);
-    }
-  });
+  const videoSource = req.query.VideoSource as string;
+  const ruleQuery = req.query.Rule as string;
+  const startTime = req.query.startTime as string;
+  const endTime = req.query.endTime as string;
+  if (!videoSource || !ruleQuery) {
+    res.status(400).json({ message: "VideoSource and Rule should be mentioned together in query parameters" });
+    return;
+  }
+  const timestampFilter: Record<string, any> = {};
+  if (startTime) {
+    timestampFilter.$gte = new Date(startTime);
+  }
+  if (endTime) {
+    timestampFilter.$lte = new Date(endTime);
+  }
   try {
-    const collection = await connectToCollection(collectionName);
-    const count = await collection.countDocuments(filter);
-    res.status(200).json({ collection: collectionName, filter, count });
-  } catch (error) {
-    res.status(500).json({ message: 'Error fetching filtered data count', error });
-  } finally {
-    await client.close();
+    const collection = await getCollection(collectionName);
+    const documents = await collection
+      .find(timestampFilter.$gte || timestampFilter.$lte ? { timestamp: timestampFilter } : {})
+      .toArray();
+    const requestedRules = ruleQuery.split(',').map((rule) => rule.trim().toLowerCase());
+    const ruleCounts: Record<string, number> = {};
+    requestedRules.forEach((rule) => {
+      ruleCounts[rule] = 0;
+    });
+    documents.forEach((doc) => {
+      try {
+        const parsedMessage = JSON.parse(doc.message);
+        const videoSourceMatch = parsedMessage.Source?.VideoSource === videoSource;
+        const ruleSet = new Set(
+          parsedMessage.Source?.Rule?.split(',').map((r: string) => r.trim().toLowerCase()) || []
+        );
+        requestedRules.forEach((rule) => {
+          if (videoSourceMatch && ruleSet.has(rule)) {
+            ruleCounts[rule] += 1;
+          }
+        });
+      } catch (error: unknown) {
+        console.error("Error parsing message:", error);
+      }
+    });
+    const response: Record<string, any> = {
+      collection: collectionName,
+      VideoSource: videoSource,
+      RuleCounts: ruleCounts,
+    };
+    if (startTime) {
+      response.startTime = startTime;
+    }
+    if (endTime) {
+      response.endTime = endTime;
+    }
+    res.status(200).json(response);
+  } catch (error: unknown) {
+    console.error("Error fetching filtered data count:", error);
+    res.status(500).json({ message: "Error fetching filtered data count", error: error instanceof Error ? error.message : 'Unknown error' });
   }
 };
 
-// 6. Perform Addition of a Given Field
+// 5. Perform Addition of a Given Field
 export const getFieldSums = async (req: Request, res: Response): Promise<void> => {
   const collectionName = req.query.collection as string;
   const fieldsToSumParam = req.query.field;
@@ -142,7 +166,7 @@ export const getFieldSums = async (req: Request, res: Response): Promise<void> =
     return;
   }
   try {
-    const collection = await connectToCollection(collectionName);
+    const collection = await getCollection(collectionName);
     const projectionStage = fieldsToSum.reduce((acc, field) => {
       acc[field] = { $toDouble: `$${field}` };
       return acc;
@@ -160,51 +184,35 @@ export const getFieldSums = async (req: Request, res: Response): Promise<void> =
     const fieldSums = result.length > 0 ? result[0] : {};
     delete fieldSums._id;
     res.status(200).json({ collection: collectionName, fieldSums });
-  } catch (error) {
-    res.status(500).json({ message: 'Error summing the fields', error });
-  } finally {
-    await client.close();
+  } catch (error: unknown) {
+    res.status(500).json({ message: 'Error summing the fields', error: error instanceof Error ? error.message : 'Unknown error' });
   }
 };
 
-// 7. controller for fetching the data w.r.t start and end time stamp (YYYY-MM-DDTHH:MM) format
+// 6. Controller for fetching the data with start and end time range
 export const getDataByDateRange = async (req: Request, res: Response): Promise<Response> => {
   try {
     const { collectionName, startDate, endDate } = req.query;
-
-    // Validate input parameters
     if (!collectionName || typeof collectionName !== 'string') {
       return res.status(400).json({ message: "A valid 'collectionName' parameter is required." });
     }
-
     if (!startDate || !endDate) {
       return res.status(400).json({ message: "'startDate' and 'endDate' parameters are required." });
     }
-
-    // Format the dates to Indian Standard Time (IST)
     const formattedStartDate = formatDateInIST(startDate as string);
     const formattedEndDate = formatDateInIST(endDate as string);
-
-    // Connect to the MongoDB client
-    await client.connect();
-    const db = client.db(dbName);
-
-    // Access the specified collection
-    const collection = db.collection(collectionName);
-
-    // Query the collection for documents within the date range
+    const collection = await getCollection(collectionName);
     const data = await collection.find({
       createdAt: {
         $gte: formattedStartDate,
         $lte: formattedEndDate,
       },
     }).toArray();
-
-    // Return the filtered data
     return res.status(200).json({ count: data.length, data });
-  } catch (error) {
-    return res.status(500).json({ message: 'Error fetching data for the given date range', error });
-  } finally {
-    await client.close(); // Ensure the MongoDB client is closed after the query
+  } catch (error: unknown) {
+    return res.status(500).json({
+      message: 'Error fetching data for the given date range',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
   }
 };
