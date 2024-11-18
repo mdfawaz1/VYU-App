@@ -1,5 +1,4 @@
 import { Request, Response } from 'express';
-
 import { MongoClient, Db, Collection } from 'mongodb';
 
 // MongoDB client setup and connection management
@@ -17,14 +16,6 @@ const connectToDatabase = async (): Promise<Db> => {
   }
   return db!;
 };
-
-import { MongoClient } from 'mongodb';
-import mongoose from 'mongoose';
-
-const mongoURI = process.env.MONGO_URI || 'mongodb://localhost:27017';
-const dbName = process.env.DB_NAME || 'VYU';
-const client = new MongoClient(mongoURI);
-
 
 // Helper function to get the collection
 const getCollection = async (collectionName: string): Promise<Collection> => {
@@ -95,7 +86,6 @@ export const getRecentDocCount = async (req: Request, res: Response): Promise<vo
   }
 };
 
-
 // 4. Get Filtered Data Count for cameras
 export const getFilteredDataCount = async (req: Request, res: Response): Promise<void> => {
   const collectionName = req.query.collection as string;
@@ -155,95 +145,6 @@ export const getFilteredDataCount = async (req: Request, res: Response): Promise
   } catch (error: unknown) {
     console.error("Error fetching filtered data count:", error);
     res.status(500).json({ message: "Error fetching filtered data count", error: error instanceof Error ? error.message : 'Unknown error' });
-
-export const getFilteredDataCount = async (req: Request, res: Response): Promise<void> => {
-  if (!validateQueryParams(['collection', 'rule'], req, res)) return;
-
-  const collectionName = req.query.collection as string;
-  const rule = req.query.rule as string;
-
-  try {
-      const collection = mongoose.connection.collection(collectionName);
-      
-      const pipeline = [
-          {
-              $match: {
-                  topic: collectionName
-              }
-          },
-          {
-              $addFields: {
-                  parsedMessage: {
-                      $let: {
-                          vars: {
-                              jsonString: {
-                                  $rtrim: {
-                                      input: "$message",
-                                      chars: "\n"
-                                  }
-                              }
-                          },
-                          in: { 
-                              $getField: {
-                                  field: "Source",
-                                  input: { $parse: "$$jsonString" }
-                              }
-                          }
-                      }
-                  }
-              }
-          },
-          {
-              $match: {
-                  "parsedMessage.Rule": rule
-              }
-          },
-          {
-              $count: "total"
-          }
-      ];
-
-      const result = await collection.aggregate(pipeline).toArray();
-      
-      res.status(200).json({
-          collection: collectionName,
-          rule,
-          count: result[0]?.total || 0
-      });
-
-  } catch (error) {
-      // Try an alternative approach if the first one fails
-      try {
-          const collection = mongoose.connection.collection(collectionName);
-          const documents = await collection.find({ topic: collectionName }).toArray();
-          
-          // Manual counting by parsing JSON
-          const count = documents.reduce((acc, doc) => {
-              try {
-                  const parsed = JSON.parse(doc.message);
-                  if (parsed.Source && parsed.Source.Rule === rule) {
-                      return acc + 1;
-                  }
-              } catch (e) {
-                  // Skip invalid JSON
-              }
-              return acc;
-          }, 0);
-
-          res.status(200).json({
-              collection: collectionName,
-              rule,
-              count
-          });
-
-      } catch (fallbackError) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-          res.status(500).json({
-              message: 'Error fetching filtered data count',
-              error: errorMessage
-          });
-      }
-
   }
 };
 

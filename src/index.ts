@@ -33,41 +33,41 @@ connectToDatabase()
     console.log('MongoDB Connected');
 
     // Define the Express routes
-    app.get('/api/allCollections', getAllCollections);
+    app.get('/api/v1/allCollections', getAllCollections);
 
-    app.get('/api/Collection/data', async (req, res) => {
+    app.get('/api/v1/Collection/data', async (req, res) => {
       try {
-        await getAllDataFromCollection(req, res);  // Call the controller
+        await getAllDataFromCollection(req, res);
       } catch (error) {
         res.status(500).json({ message: 'Something went wrong.', error });
       }
     });
 
-    app.get('/api/Collection/data/allRecent', async (req, res) => {
+    app.get('/api/v1/Collection/data/allRecent', async (req, res) => {
       try {
-        await getRecentDocCount(req, res);  // Call the controller
+        await getRecentDocCount(req, res); 
       } catch (error) {
         res.status(500).json({ message: 'Something went wrong.', error });
       }
     });
 
-    app.get('/api/Collection/filtered/count', getFilteredDataCount);
+    app.get('/api/v1/Collection/filtered/count', getFilteredDataCount);
 
-    app.get('/api/Collection/field/sum', getFieldSums);
+    app.get('/api/v1/Collection/field/sum', getFieldSums);
 
-    app.get('/api/Collection/data/timeStamp', async (req, res) => {
+    app.get('/api/v1/Collection/data/timeStamp', async (req, res) => {
       try {
-        await getDataByDateRange(req, res);  // Call the controller
+        await getDataByDateRange(req, res); 
       } catch (error) {
         res.status(500).json({ message: 'Error handling the request', error });
       }
     });
 
     // MQTT Routes
-    app.post('/api/configure-mqtt', configureMqttClient);
-    app.post('/api/subscribe/topic', ensureMqttConfigured, subscribeToTopic);
-    app.post('/api/unsubscribe/topic', ensureMqttConfigured, unsubscribeFromTopic);
-    app.get('/api/subscriptions/list', ensureMqttConfigured, getSubscriptions);
+    app.post('/api/v1/configure-mqtt', configureMqttClient);
+    app.post('/api/v1/subscribe/topic', ensureMqttConfigured, subscribeToTopic);
+    app.post('/api/v1/unsubscribe/topic', ensureMqttConfigured, unsubscribeFromTopic);
+    app.get('/api/v1/subscriptions/list', ensureMqttConfigured, getSubscriptions);
 
     // Start server
     app.listen(port, () => {
@@ -77,5 +77,5 @@ connectToDatabase()
   })
   .catch((err) => {
     console.error('Failed to connect to MongoDB:', err);
-    process.exit(1); // Exit the process if MongoDB connection fails
+    process.exit(1); 
   });
