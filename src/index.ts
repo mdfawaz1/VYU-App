@@ -1,89 +1,81 @@
 import express from 'express';
-import mongoose from 'mongoose';
+import { connectToDatabase } from './mongodb-connection'; // Import your MongoDB connection logic
+import { createMQTTBroker } from './mqtt-aedes-project/aedes-broker'; // Assuming this is where the MQTT broker is defined
 
 import {
     getAllCollections,
     getAllDataFromCollection,
-    getDocCountFromCollection,
     getRecentDocCount,
     getFilteredDataCount,
     getFieldSums,
     getDataByDateRange,
-  } from './controllers/Controller_data';
+} from './controllers/Controller_data';
 
-  import {
+import {
     configureMqttClient,
     subscribeToTopic,
     unsubscribeFromTopic,
     getSubscriptions,
     ensureMqttConfigured,
-  } from './controllers/controllers_mqtt';
-  
+} from './controllers/controllers_mqtt';
+
 const app = express();
 const port = process.env.PORT || 8080;
-
 app.use(express.json());
 
-// Connect to MongoDB
-const mongoURI = 'mongodb://localhost:27017/VYU';
-mongoose.connect(mongoURI)
-.then(() => console.log('MongoDB Connected'))
-.catch(err => console.log(err));
+// MQTT Setup
+const mqtt_port = 1883;
+const server = createMQTTBroker(mqtt_port);
 
-// Endpoints directly in index.ts
-// 1. api for collection names
-app.get('/api/v1/vehicel/collection', getAllCollections);
+// Connect to MongoDB once before starting the Express server
+connectToDatabase()
+  .then(() => {
+    console.log('MongoDB Connected');
 
-// 2. api for data from collection
-app.get('/api/v1/vehicel/collection/data',async (req, res) => {
-  try {
-    await getAllDataFromCollection(req, res);  // Call the controller
-  } catch (error) {
-    res.status(500).json({ message: 'Something went wrong.', error });
-  }
-});
+    // Define the Express routes
+    app.get('/api/allCollections', getAllCollections);
 
-//3. api for counting the doc of the collection
-app.get('/api/v1/vehicel/collection/count/doc', async (req, res) => {
-  try {
-    await getDocCountFromCollection(req, res);  // Calling the controller
-  } catch (error) {
-    res.status(500).json({ message: 'Something went wrong.', error });
-  }
-});
+    app.get('/api/Collection/data', async (req, res) => {
+      try {
+        await getAllDataFromCollection(req, res);  // Call the controller
+      } catch (error) {
+        res.status(500).json({ message: 'Something went wrong.', error });
+      }
+    });
 
-// 4. api for fetching the data of specified collection name and days
-app.get('/api/v1/vehicel/collection/count/recent', async (req, res) => {
-  try {
-    await getRecentDocCount(req, res);  // Calling the controller
-  } catch (error) {
-    res.status(500).json({ message: 'Something went wrong.', error });
-  }
-});
+    app.get('/api/Collection/data/allRecent', async (req, res) => {
+      try {
+        await getRecentDocCount(req, res);  // Call the controller
+      } catch (error) {
+        res.status(500).json({ message: 'Something went wrong.', error });
+      }
+    });
 
-// 5. api for fetching the count of the specified field and the collection name
-app.get('/api/v1/vehicel/collection/field/count', getFilteredDataCount);
+    app.get('/api/Collection/filtered/count', getFilteredDataCount);
 
-//6. api for fetching the sum of the specified collection name and field
-app.get('/api/v1/vehicel/collection/field/sum', getFieldSums);
+    app.get('/api/Collection/field/sum', getFieldSums);
 
-// 7. api for timestamp data
-app.get('/api/v1/vehicel/collection/data/timeStamp', async (req, res) => {
-  try {
-    // Call the controller function and await its result
-    await getDataByDateRange(req, res);
-  } catch (error) {
-    res.status(500).json({ message: 'Error handling the request', error });
-  }
-});
+    app.get('/api/Collection/data/timeStamp', async (req, res) => {
+      try {
+        await getDataByDateRange(req, res);  // Call the controller
+      } catch (error) {
+        res.status(500).json({ message: 'Error handling the request', error });
+      }
+    });
 
-// for mqtt
-app.post('/configure-mqtt', configureMqttClient);
-app.post('/subscribe', ensureMqttConfigured, subscribeToTopic);
-app.post('/unsubscribe', ensureMqttConfigured, unsubscribeFromTopic);
-app.get('/subscriptions', ensureMqttConfigured, getSubscriptions);
+    // MQTT Routes
+    app.post('/api/configure-mqtt', configureMqttClient);
+    app.post('/api/subscribe/topic', ensureMqttConfigured, subscribeToTopic);
+    app.post('/api/unsubscribe/topic', ensureMqttConfigured, unsubscribeFromTopic);
+    app.get('/api/subscriptions/list', ensureMqttConfigured, getSubscriptions);
 
-// Start server
-app.listen(port, () => {
-  console.log(`Server is running on http://localhost:${port}`);
-});
+    // Start server
+    app.listen(port, () => {
+      console.log(`Server is running on http://localhost:${port}`);
+    });
+
+  })
+  .catch((err) => {
+    console.error('Failed to connect to MongoDB:', err);
+    process.exit(1); // Exit the process if MongoDB connection fails
+  });
