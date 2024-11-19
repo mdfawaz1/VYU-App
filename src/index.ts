@@ -6,8 +6,8 @@ import {
     getAllCollections,
     getAllDataFromCollection,
     getRecentDocCount,
-    getFilteredDataCount,
     getFieldSums,
+    getFieldCounts,
     getDataByDateRange,
 } from './controllers/Controller_data';
 
@@ -51,7 +51,7 @@ connectToDatabase()
       }
     });
 
-    app.get('/api/v1/Collection/filtered/count', getFilteredDataCount);
+    app.get('/api/v1/Collection/filtered/count', getFieldCounts);
 
     app.get('/api/v1/Collection/field/sum', getFieldSums);
 

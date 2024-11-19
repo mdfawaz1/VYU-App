@@ -1,34 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
-import { Schema, connection, Model, Document } from 'mongoose';
 import mqtt, { MqttClient } from 'mqtt';
+import { getCollection } from '../mongodb-connection';
 
-// Define the interface for the schema document
-interface IMessage extends Document {
-  topic: string;
-  message: string;
-  timestamp: Date;
-}
-
-// Define a map to store dynamically created models
-const topicModels: { [key: string]: Model<IMessage> } = {};
 let mqttClient: MqttClient | null = null;
 let subscribedTopics: string[] = [];
-
-// Function to dynamically get or create a model for a topic
-const getModelForTopic = (topic: string): Model<IMessage> => {
-  if (!topicModels[topic]) {
-    const topicSchema = new Schema<IMessage>(
-      {
-        topic: { type: String, required: true },
-        message: { type: String, required: true },
-        timestamp: { type: Date, default: Date.now },
-      },
-      { collection: topic }
-    );
-    topicModels[topic] = connection.model<IMessage>(topic, topicSchema);
-  }
-  return topicModels[topic];
-};
 
 // Helper function to handle MQTT subscription/unsubscription logic
 const handleSubscription = (
@@ -81,16 +56,33 @@ export const configureMqttClient = (req: Request, res: Response): void => {
       }
     });
     mqttClient.on('message', async (topic: string, message: Buffer) => {
-      console.log(`Received message on ${topic}: ${message.toString()}`);
+      console.log(`Raw message received on topic ${topic}: ${message.toString()}`);
       try {
-        const topicModel = getModelForTopic(topic);
-        const cameraData = new topicModel({
+        const parsedMessage = JSON.parse(message.toString());
+        const { UtcTime, Source } = parsedMessage;
+
+        if (!UtcTime || !Source || !Source.VideoSource || !Source.Rule) {
+          console.error('Invalid message format:', parsedMessage);
+          return;
+        }
+
+        const transformedData = {
           topic,
-          message: message.toString(),
-        });
-        await cameraData.save();
+          TimeStamp: new Date(UtcTime),
+          VideoSource: Source.VideoSource,
+          Rule: Source.Rule,
+        };
+
+        const collection = await getCollection(topic);
+        const result = await collection.insertOne(transformedData);
+
+        if (result.acknowledged) {
+          console.log(`Data successfully inserted for topic ${topic}:`, transformedData);
+        } else {
+          console.error('Failed to insert data into MongoDB:', transformedData);
+        }
       } catch (err) {
-        console.error('Error saving data:', err);
+        console.error('Error processing MQTT message or inserting into MongoDB:', err);
       }
     });
     mqttClient.on('error', (err: unknown) => {
@@ -98,15 +90,6 @@ export const configureMqttClient = (req: Request, res: Response): void => {
       if (!res.headersSent) {
         res.status(500).send('Failed to connect to MQTT broker');
       }
-    });
-    mqttClient.on('offline', () => {
-      console.warn('MQTT client went offline');
-    });
-    mqttClient.on('reconnect', () => {
-      console.info('MQTT client is reconnecting...');
-    });
-    mqttClient.on('close', () => {
-      console.warn('MQTT connection closed');
     });
   } catch (err) {
     console.error('MQTT configuration error:', err);

@@ -43,6 +43,10 @@ const formatDateInIST = (dateStr: string): Date => {
   return date;
 };
 
+interface FieldCounts {
+  [key: string]: number;  // Define a dictionary type for field counts
+}
+
 // 1. Get All Collection Names
 export const getAllCollections = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -87,64 +91,92 @@ export const getRecentDocCount = async (req: Request, res: Response): Promise<vo
 };
 
 // 4. Get Filtered Data Count for cameras
-export const getFilteredDataCount = async (req: Request, res: Response): Promise<void> => {
-  const collectionName = req.query.collection as string;
-  const videoSource = req.query.VideoSource as string;
-  const ruleQuery = req.query.Rule as string;
-  const startTime = req.query.startTime as string;
-  const endTime = req.query.endTime as string;
-  if (!videoSource || !ruleQuery) {
-    res.status(400).json({ message: "VideoSource and Rule should be mentioned together in query parameters" });
+export const getFieldCounts = async (req: Request, res: Response): Promise<void> => {
+  const collectionName = req.query.collection as string; // Get collection name
+  const filtersParam = req.query; // Get all query parameters for filtering
+  const rulesParam = req.query.Rule; // Specifically for 'Rule' field
+
+  if (!collectionName || typeof collectionName !== 'string') {
+    res.status(400).json({ message: "Collection name is required and must be a string." });
     return;
   }
-  const timestampFilter: Record<string, any> = {};
-  if (startTime) {
-    timestampFilter.$gte = new Date(startTime);
-  }
-  if (endTime) {
-    timestampFilter.$lte = new Date(endTime);
-  }
+
   try {
+    // Get collection reference
     const collection = await getCollection(collectionName);
-    const documents = await collection
-      .find(timestampFilter.$gte || timestampFilter.$lte ? { timestamp: timestampFilter } : {})
-      .toArray();
-    const requestedRules = ruleQuery.split(',').map((rule) => rule.trim().toLowerCase());
-    const ruleCounts: Record<string, number> = {};
-    requestedRules.forEach((rule) => {
-      ruleCounts[rule] = 0;
-    });
-    documents.forEach((doc) => {
-      try {
-        const parsedMessage = JSON.parse(doc.message);
-        const videoSourceMatch = parsedMessage.Source?.VideoSource === videoSource;
-        const ruleSet = new Set(
-          parsedMessage.Source?.Rule?.split(',').map((r: string) => r.trim().toLowerCase()) || []
-        );
-        requestedRules.forEach((rule) => {
-          if (videoSourceMatch && ruleSet.has(rule)) {
-            ruleCounts[rule] += 1;
-          }
-        });
-      } catch (error: unknown) {
-        console.error("Error parsing message:", error);
+
+    // Prepare filter object
+    const filter: Record<string, any> = {};
+
+    // Add all filters from query parameters (excluding collection and Rule)
+    Object.keys(filtersParam).forEach((key) => {
+      if (key !== 'collection' && key !== 'Rule') {
+        const value = filtersParam[key];
+        if (Array.isArray(value)) {
+          filter[key] = { $in: value };  // Handle multiple values for the field
+        } else {
+          filter[key] = value;
+        }
       }
     });
-    const response: Record<string, any> = {
+
+    // Handle Rule filter separately
+    let ruleFilter: Record<string, any> = {};
+    if (rulesParam) {
+      let rules: string[] = [];
+
+      // Handle 'Rule' query parameter whether it's a single string or an array of strings
+      if (typeof rulesParam === 'string') {
+        rules = rulesParam.split(','); // Split string by commas if it's a single string
+      } else if (Array.isArray(rulesParam)) {
+        rules = rulesParam.filter((r) => typeof r === 'string') as string[]; // Ensure it's an array of strings
+      }
+
+      ruleFilter['Rule'] = { $in: rules };  // Match any of the rules in the array
+    }
+
+    // Combine the filter (rule filter + other filters)
+    const combinedFilter = { ...filter, ...ruleFilter };
+
+    // Query the database with the filter and project relevant fields
+    const result = await collection.find(combinedFilter).toArray();
+
+    // Initialize the field counts object to store counts for each field
+    const fieldCounts: FieldCounts = {};
+
+    // Process the documents to count occurrences for the fields
+    result.forEach((doc) => {
+      // Handle counting for 'Rule' field (which can have multiple values)
+      if (doc.Rule) {
+        const rules = Array.isArray(doc.Rule) ? doc.Rule : doc.Rule.split(','); // Ensure it's an array
+        rules.forEach((rule: string) => {
+          fieldCounts[rule] = (fieldCounts[rule] || 0) + 1; // Count each rule occurrence
+        });
+      }
+
+      // Handle counting for numeric fields like 'car', 'bike', etc.
+      Object.keys(doc).forEach((key) => {
+        if (typeof doc[key] === 'number') {
+          const value = doc[key];
+          // Only count if this field is part of the filter or matches the value (e.g., car = 2)
+          if (filtersParam[key] === undefined || filtersParam[key] === value.toString()) {
+            fieldCounts[key] = (fieldCounts[key] || 0) + 1;
+          }
+        }
+      });
+    });
+
+    // Return the result
+    res.status(200).json({
       collection: collectionName,
-      VideoSource: videoSource,
-      RuleCounts: ruleCounts,
-    };
-    if (startTime) {
-      response.startTime = startTime;
-    }
-    if (endTime) {
-      response.endTime = endTime;
-    }
-    res.status(200).json(response);
+      filter: combinedFilter,
+      fieldCounts,
+    });
   } catch (error: unknown) {
-    console.error("Error fetching filtered data count:", error);
-    res.status(500).json({ message: "Error fetching filtered data count", error: error instanceof Error ? error.message : 'Unknown error' });
+    res.status(500).json({
+      message: 'Error processing the data',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
   }
 };
 
@@ -188,6 +220,8 @@ export const getFieldSums = async (req: Request, res: Response): Promise<void> =
     res.status(500).json({ message: 'Error summing the fields', error: error instanceof Error ? error.message : 'Unknown error' });
   }
 };
+
+
 
 // 6. Controller for fetching the data with start and end time range
 export const getDataByDateRange = async (req: Request, res: Response): Promise<Response> => {
