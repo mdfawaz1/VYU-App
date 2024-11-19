@@ -250,3 +250,54 @@ export const getDataByDateRange = async (req: Request, res: Response): Promise<R
     });
   }
 };
+
+// Add this new function to get available VideoSources
+export const getAvailableVideoSources = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { collection } = req.query;
+
+    if (!collection || typeof collection !== 'string') {
+      res.status(400).json({ message: "Collection name is required and must be a string." });
+      return;
+    }
+
+    const col = await getCollection(collection);
+
+    // Find all documents in the collection
+    const documents = await col.find({}).toArray();
+
+    // Extract unique VideoSource values
+    const videoSources = new Set<string>();
+    documents.forEach(doc => {
+      if (doc.VideoSource) {
+        videoSources.add(doc.VideoSource);
+      }
+    });
+
+    // Convert to array and sort
+    const sortedSources = Array.from(videoSources).sort();
+
+    // Count documents for each source
+    const sourceCounts = await Promise.all(
+      sortedSources.map(async (source) => {
+        const count = await col.countDocuments({ VideoSource: source });
+        return { source, count };
+      })
+    );
+
+    console.log(`Available VideoSources for ${collection}:`, sourceCounts);
+
+    res.status(200).json({
+      collection,
+      videoSources: sourceCounts,
+      total: sourceCounts.length
+    });
+
+  } catch (error) {
+    console.error('Error getting video sources:', error);
+    res.status(500).json({
+      message: 'Error getting video sources',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};

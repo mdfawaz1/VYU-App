@@ -1,6 +1,7 @@
 import express from 'express';
 import { connectToDatabase } from './mongodb-connection'; // Import your MongoDB connection logic
 import { createMQTTBroker } from './mqtt-aedes-project/aedes-broker'; // Assuming this is where the MQTT broker is defined
+import cors from 'cors';
 
 import {
     getAllCollections,
@@ -9,6 +10,7 @@ import {
     getFieldSums,
     getFieldCounts,
     getDataByDateRange,
+    getAvailableVideoSources,
 } from './controllers/Controller_data';
 
 import {
@@ -21,6 +23,16 @@ import {
 
 const app = express();
 const port = process.env.PORT || 8080;
+
+// Configure CORS
+app.use(cors({
+  origin: ['http://localhost:3000', 'http://localhost:3001'], // Add your frontend URLs
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+  credentials: true, // Enable credentials (cookies, authorization headers, etc)
+  optionsSuccessStatus: 200 // Some legacy browsers (IE11, various SmartTVs) choke on 204
+}));
+
 app.use(express.json());
 
 // MQTT Setup
@@ -63,11 +75,25 @@ connectToDatabase()
       }
     });
 
+    app.get('/api/v1/Collection/videoSources', async (req, res) => {
+      try {
+        await getAvailableVideoSources(req, res);
+      } catch (error) {
+        res.status(500).json({ 
+          message: 'Error getting video sources', 
+          error: error instanceof Error ? error.message : 'Unknown error' 
+        });
+      }
+    });
+
     // MQTT Routes
     app.post('/api/v1/configure-mqtt', configureMqttClient);
     app.post('/api/v1/subscribe/topic', ensureMqttConfigured, subscribeToTopic);
     app.post('/api/v1/unsubscribe/topic', ensureMqttConfigured, unsubscribeFromTopic);
     app.get('/api/v1/subscriptions/list', ensureMqttConfigured, getSubscriptions);
+
+    // Add preflight handler for CORS
+    app.options('*', cors());
 
     // Start server
     app.listen(port, () => {
