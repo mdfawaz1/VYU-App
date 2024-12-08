@@ -14,7 +14,7 @@ export const createMQTTBroker = (port: number): Server => {
   });
 
   broker.on('publish', (packet: PublishPacket, client: Client | null) => {
-    console.log(`Message published on topic ${packet.topic}: ${packet.payload.toString()}`);
+    //console.log(`Message published on topic ${packet.topic}: ${packet.payload.toString()}`);
   });
 
   broker.on('subscribe', (subscriptions: Subscription[], client: Client) => {

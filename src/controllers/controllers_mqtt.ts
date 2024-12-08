@@ -56,7 +56,7 @@ export const configureMqttClient = (req: Request, res: Response): void => {
       }
     });
     mqttClient.on('message', async (topic: string, message: Buffer) => {
-      console.log(`Raw message received on topic ${topic}: ${message.toString()}`);
+      //console.log(`Raw message received on topic ${topic}: ${message.toString()}`);
       try {
         const parsedMessage = JSON.parse(message.toString());
         const { UtcTime, Source } = parsedMessage;
