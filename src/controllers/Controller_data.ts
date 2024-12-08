@@ -1,27 +1,5 @@
 import { Request, Response } from 'express';
-import { MongoClient, Db, Collection } from 'mongodb';
-
-// MongoDB client setup and connection management
-let db: Db | undefined;
-
-const connectToDatabase = async (): Promise<Db> => {
-  if (!db) {
-    try {
-      const client = new MongoClient('mongodb://localhost:27017');
-      const connection = await client.connect();
-      db = connection.db('VYU');
-    } catch (error) {
-      throw new Error('Failed to connect to database');
-    }
-  }
-  return db!;
-};
-
-// Helper function to get the collection
-const getCollection = async (collectionName: string): Promise<Collection> => {
-  const database = await connectToDatabase();
-  return database.collection(collectionName);
-};
+import { getCollection, connectToDatabase  } from '../mongodb-connection'; // Import helper functions
 
 // Utility Function to Validate Query Parameters
 const validateQueryParams = (params: string[], req: Request, res: Response): boolean => {
@@ -44,18 +22,21 @@ const formatDateInIST = (dateStr: string): Date => {
 };
 
 interface FieldCounts {
-  [key: string]: number;  // Define a dictionary type for field counts
+  [key: string]: number; // Define a dictionary type for field counts
 }
 
 // 1. Get All Collection Names
 export const getAllCollections = async (req: Request, res: Response): Promise<void> => {
   try {
-    const db = await connectToDatabase();
-    const collections = await db.listCollections().toArray();
+    const database = await connectToDatabase(); // Get the database instance directly
+    const collections = await database.listCollections().toArray();
     const collectionNames = collections.map((collection) => collection.name);
     res.status(200).json({ collections: collectionNames });
   } catch (error: unknown) {
-    res.status(500).json({ message: 'Error fetching collections', error: error instanceof Error ? error.message : 'Unknown error' });
+    res.status(500).json({
+      message: 'Error fetching collections',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
   }
 };
 
@@ -69,7 +50,10 @@ export const getAllDataFromCollection = async (req: Request, res: Response): Pro
     const count_doc = await collection.countDocuments({});
     res.status(200).json({ count: count_doc, allData });
   } catch (error: unknown) {
-    res.status(500).json({ message: 'Error fetching data from collection', error: error instanceof Error ? error.message : 'Unknown error' });
+    res.status(500).json({
+      message: 'Error fetching data from collection',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
   }
 };
 
@@ -86,87 +70,65 @@ export const getRecentDocCount = async (req: Request, res: Response): Promise<vo
     const count = await collection.countDocuments({ createdAt: { $gte: startDate } });
     res.status(200).json({ collection: collectionName, recentDays, count });
   } catch (error: unknown) {
-    res.status(500).json({ message: 'Error fetching recent documents count', error: error instanceof Error ? error.message : 'Unknown error' });
+    res.status(500).json({
+      message: 'Error fetching recent documents count',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
   }
 };
 
+
 // 4. Get Filtered Data Count for cameras
 export const getFieldCounts = async (req: Request, res: Response): Promise<void> => {
-  const collectionName = req.query.collection as string; // Get collection name
-  const filtersParam = req.query; // Get all query parameters for filtering
-  const rulesParam = req.query.Rule; // Specifically for 'Rule' field
-
+  const collectionName = req.query.collection as string;
+  const filtersParam = req.query;
+  const rulesParam = req.query.Rule;
   if (!collectionName || typeof collectionName !== 'string') {
     res.status(400).json({ message: "Collection name is required and must be a string." });
     return;
   }
-
   try {
-    // Get collection reference
     const collection = await getCollection(collectionName);
-
-    // Prepare filter object
     const filter: Record<string, any> = {};
-
-    // Add all filters from query parameters (excluding collection and Rule)
     Object.keys(filtersParam).forEach((key) => {
       if (key !== 'collection' && key !== 'Rule') {
         const value = filtersParam[key];
         if (Array.isArray(value)) {
-          filter[key] = { $in: value };  // Handle multiple values for the field
+          filter[key] = { $in: value };
         } else {
           filter[key] = value;
         }
       }
     });
-
-    // Handle Rule filter separately
     let ruleFilter: Record<string, any> = {};
     if (rulesParam) {
       let rules: string[] = [];
-
-      // Handle 'Rule' query parameter whether it's a single string or an array of strings
       if (typeof rulesParam === 'string') {
-        rules = rulesParam.split(','); // Split string by commas if it's a single string
+        rules = rulesParam.split(',');
       } else if (Array.isArray(rulesParam)) {
-        rules = rulesParam.filter((r) => typeof r === 'string') as string[]; // Ensure it's an array of strings
+        rules = rulesParam.filter((r) => typeof r === 'string') as string[];
       }
-
-      ruleFilter['Rule'] = { $in: rules };  // Match any of the rules in the array
+      ruleFilter['Rule'] = { $in: rules };
     }
-
-    // Combine the filter (rule filter + other filters)
     const combinedFilter = { ...filter, ...ruleFilter };
-
-    // Query the database with the filter and project relevant fields
     const result = await collection.find(combinedFilter).toArray();
-
-    // Initialize the field counts object to store counts for each field
     const fieldCounts: FieldCounts = {};
-
-    // Process the documents to count occurrences for the fields
     result.forEach((doc) => {
-      // Handle counting for 'Rule' field (which can have multiple values)
       if (doc.Rule) {
-        const rules = Array.isArray(doc.Rule) ? doc.Rule : doc.Rule.split(','); // Ensure it's an array
+        const rules = Array.isArray(doc.Rule) ? doc.Rule : doc.Rule.split(',');
         rules.forEach((rule: string) => {
-          fieldCounts[rule] = (fieldCounts[rule] || 0) + 1; // Count each rule occurrence
+          fieldCounts[rule] = (fieldCounts[rule] || 0) + 1;
         });
       }
-
-      // Handle counting for numeric fields like 'car', 'bike', etc.
       Object.keys(doc).forEach((key) => {
         if (typeof doc[key] === 'number') {
           const value = doc[key];
-          // Only count if this field is part of the filter or matches the value (e.g., car = 2)
           if (filtersParam[key] === undefined || filtersParam[key] === value.toString()) {
             fieldCounts[key] = (fieldCounts[key] || 0) + 1;
           }
         }
       });
     });
-
-    // Return the result
     res.status(200).json({
       collection: collectionName,
       filter: combinedFilter,
@@ -221,8 +183,6 @@ export const getFieldSums = async (req: Request, res: Response): Promise<void> =
   }
 };
 
-
-
 // 6. Controller for fetching the data with start and end time range
 export const getDataByDateRange = async (req: Request, res: Response): Promise<Response> => {
   try {
@@ -251,53 +211,90 @@ export const getDataByDateRange = async (req: Request, res: Response): Promise<R
   }
 };
 
-// Add this new function to get available VideoSources
+// 7. Add this new function to get available VideoSources
 export const getAvailableVideoSources = async (req: Request, res: Response): Promise<void> => {
   try {
     const { collection } = req.query;
-
     if (!collection || typeof collection !== 'string') {
       res.status(400).json({ message: "Collection name is required and must be a string." });
       return;
     }
-
     const col = await getCollection(collection);
-
-    // Find all documents in the collection
     const documents = await col.find({}).toArray();
-
-    // Extract unique VideoSource values
     const videoSources = new Set<string>();
     documents.forEach(doc => {
       if (doc.VideoSource) {
         videoSources.add(doc.VideoSource);
       }
     });
-
-    // Convert to array and sort
     const sortedSources = Array.from(videoSources).sort();
-
-    // Count documents for each source
     const sourceCounts = await Promise.all(
       sortedSources.map(async (source) => {
         const count = await col.countDocuments({ VideoSource: source });
         return { source, count };
       })
     );
-
     console.log(`Available VideoSources for ${collection}:`, sourceCounts);
-
     res.status(200).json({
       collection,
       videoSources: sourceCounts,
       total: sourceCounts.length
     });
-
   } catch (error) {
     console.error('Error getting video sources:', error);
     res.status(500).json({
       message: 'Error getting video sources',
       error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+// 8. controller for finding sun and avg for the given fields
+export const getFieldAggregates = async (req: Request, res: Response): Promise<void> => {
+  const collectionName = req.query.collection as string;
+  const fieldsParam = req.query.field as string | undefined;
+  if (!collectionName || typeof collectionName !== "string") {
+    res.status(400).json({ message: "Collection name is required and must be a string." });
+    return;
+  }
+  const fields: string[] = fieldsParam
+    ? fieldsParam.split(",").map((field) => field.trim())
+    : [];
+  if (fields.length === 0) {
+    res.status(400).json({ message: "Field is required and must be a comma-separated string." });
+    return;
+  }
+  try {
+    const collection = await getCollection(collectionName);
+    const pipeline: any[] = [];
+    const projectionStage = fields.reduce((acc, field) => {
+      acc[field] = { $toDouble: `$${field}` };
+      return acc;
+    }, {} as Record<string, any>);
+    pipeline.push({ $project: projectionStage });
+    const groupStage = fields.reduce((acc, field) => {
+      acc[`${field}_sum`] = { $sum: `$${field}` };
+      acc[`${field}_avg`] = { $avg: `$${field}` };
+      return acc;
+    }, {} as Record<string, any>);
+    pipeline.push({
+      $group: { _id: null, ...groupStage },
+    });
+    const result = await collection.aggregate(pipeline).toArray();
+    if (!result || result.length === 0) {
+      res.status(404).json({
+        message: "No data found for the specified collection and query parameters.",
+      });
+      return;
+    }
+    const aggregates = result[0];
+    delete aggregates._id;
+    res.status(200).json({ collection: collectionName, aggregates });
+  } catch (error: unknown) {
+    console.error("Error in getFieldAggregates:", error);
+    res.status(500).json({
+      message: "Error calculating field aggregates",
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };
